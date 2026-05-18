@@ -350,6 +350,14 @@ export function normalizeActivityLogRow(
     _raw: raw,
   };
 
+  // TEMP DEBUG: log parsed timestamp info for a few rows to trace week bucketing
+  // eslint-disable-next-line no-console
+  if (rowIndex <= 3) {
+    // log the raw timestamp string and the parsed ISO (or null)
+    // eslint-disable-next-line no-console
+    console.log(`[normalizers] row ${rowIndex} raw.timestamp="${String(raw.timestamp)}" parsed=`, timestamp ? timestamp.toISOString() : null);
+  }
+
   return { record, fixed, dropped };
 }
 

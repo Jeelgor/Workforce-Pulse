@@ -124,3 +124,66 @@ export function istISOWeek(date: Date): { year: number; week: number } {
 
   return { year: d.getUTCFullYear(), week };
 }
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Class-name combiner similar to `classnames`.
+ * Accepts strings, arrays, and objects ({ 'class': boolean }).
+ */
+export function cn(...inputs: Array<string | number | boolean | null | undefined | Record<string, unknown> | Array<unknown>>): string {
+  const out: string[] = [];
+  const walk = (v: unknown): void => {
+    if (v === null || v === undefined) return;
+    if (typeof v === "string" || typeof v === "number") {
+      out.push(String(v));
+      return;
+    }
+    if (Array.isArray(v)) {
+      (v as Array<unknown>).forEach(walk);
+      return;
+    }
+    if (typeof v === "object") {
+      const obj = v as Record<string, unknown>;
+      for (const k in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k]) out.push(k);
+      }
+      return;
+    }
+  };
+  inputs.forEach(walk);
+  return out.join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// Display formatting helpers
+// ---------------------------------------------------------------------------
+
+/** Format INR values concisely: ₹41.9K or ₹41,855 */
+export function formatINR(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || Number.isNaN(amount)) return "—";
+  const abs = Math.abs(amount);
+  if (abs >= 1000) {
+    // show with 1 decimal if in thousands
+    const thousands = amount / 1000;
+    const rounded = Math.abs(thousands) >= 100 ? Math.round(thousands) : Math.round(thousands * 10) / 10;
+    return `₹${rounded.toLocaleString(undefined, { maximumFractionDigits: rounded % 1 === 0 ? 0 : 1 })}K`;
+  }
+  return `₹${Math.round(amount).toLocaleString()}`;
+}
+
+/** Format hours: 69.5 hrs */
+export function formatHours(hours: number | null | undefined): string {
+  if (hours === null || hours === undefined || Number.isNaN(hours)) return "—";
+  const val = Math.round(hours * 10) / 10; // one decimal
+  return `${val.toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs`;
+}
+
+/** Format score as `100 / 100` */
+export function formatScore(score: number | null | undefined, max = 100): string {
+  if (score === null || score === undefined || Number.isNaN(score)) return `— / ${max}`;
+  const rounded = Math.round(score);
+  return `${rounded} / ${max}`;
+}

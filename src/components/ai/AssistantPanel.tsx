@@ -1,0 +1,299 @@
+"use client";
+import * as React from "react";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  error?: boolean;
+}
+
+interface ActiveFilters {
+  department?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Suggested questions — shown when the conversation is empty
+// ---------------------------------------------------------------------------
+
+const SUGGESTED_QUESTIONS = [
+  "Which department has the highest repetitive workload?",
+  "What is the top automation opportunity this month?",
+  "Which employees are significantly above their role average?",
+  "What are the week-over-week trends in repetitive work?",
+  "Are there any anomalies I should be aware of?",
+  "How much INR could we recover through automation?",
+];
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function UserBubble({ content }: { content: string }) {
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-blue-600 text-white px-4 py-2.5 text-sm leading-relaxed">
+        {content}
+      </div>
+    </div>
+  );
+}
+
+function AssistantBubble({
+  content,
+  error,
+}: {
+  content: string;
+  error?: boolean;
+}) {
+  return (
+    <div className="flex justify-start">
+      <div
+        className={`max-w-[85%] rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+          error
+            ? "bg-red-50 text-red-700 border border-red-200"
+            : "bg-gray-100 text-gray-800"
+        }`}
+      >
+        {content}
+      </div>
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex justify-start">
+      <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
+        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
+        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
+export default function AssistantPanel({
+  activeFilters,
+}: {
+  activeFilters?: ActiveFilters;
+}) {
+  const [messages, setMessages] = React.useState<Message[]>([]);
+  const [input, setInput] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const bottomRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // Auto-scroll to latest message
+  React.useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  const sendQuestion = React.useCallback(
+    async (question: string) => {
+      const trimmed = question.trim();
+      if (!trimmed || loading) return;
+
+      const userMsg: Message = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: trimmed,
+      };
+
+      setMessages((prev) => [...prev, userMsg]);
+      setInput("");
+      setLoading(true);
+
+      try {
+        const res = await fetch("/api/assistant", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: trimmed,
+            filters: activeFilters ?? {},
+          }),
+        });
+
+        const data = await res.json();
+
+        const assistantMsg: Message = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: res.ok
+            ? data.answer
+            : data.error ?? "Something went wrong. Please try again.",
+          error: !res.ok,
+        };
+
+        setMessages((prev) => [...prev, assistantMsg]);
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: "Network error. Please check your connection and try again.",
+            error: true,
+          },
+        ]);
+      } finally {
+        setLoading(false);
+        // Refocus input after response
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }
+    },
+    [loading, activeFilters]
+  );
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendQuestion(input);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Submit on Enter (without Shift)
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendQuestion(input);
+    }
+  };
+
+  const isEmpty = messages.length === 0;
+
+  return (
+    <div className="rounded-lg border bg-white shadow-sm flex flex-col h-[520px]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-green-500" aria-hidden />
+          <h3 className="text-sm font-semibold text-gray-900">
+            Workforce Pulse Assistant
+          </h3>
+        </div>
+        <div className="text-xs text-gray-400">Powered by Groq · llama-3.3-70b</div>
+      </div>
+
+      {/* Message area */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {isEmpty ? (
+          <div className="h-full flex flex-col items-center justify-center text-center px-4">
+            <div className="text-2xl mb-2" aria-hidden>
+              📊
+            </div>
+            <p className="text-sm font-medium text-gray-700 mb-1">
+              Ask about your workforce data
+            </p>
+            <p className="text-xs text-gray-400 mb-5">
+              Answers are grounded in your real analytics — no hallucinations.
+            </p>
+            <div className="grid grid-cols-1 gap-2 w-full max-w-sm">
+              {SUGGESTED_QUESTIONS.slice(0, 4).map((q) => (
+                <button
+                  key={q}
+                  onClick={() => sendQuestion(q)}
+                  className="text-left text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 py-2 transition-colors"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            {messages.map((msg) =>
+              msg.role === "user" ? (
+                <UserBubble key={msg.id} content={msg.content} />
+              ) : (
+                <AssistantBubble
+                  key={msg.id}
+                  content={msg.content}
+                  error={msg.error}
+                />
+              )
+            )}
+            {loading && <TypingIndicator />}
+          </>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input area */}
+      <div className="border-t px-3 py-3">
+        <form onSubmit={handleSubmit} className="flex items-end gap-2">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask about repetitive work, automation opportunities, trends…"
+            rows={1}
+            disabled={loading}
+            aria-label="Ask the assistant"
+            className="flex-1 resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 min-h-[38px] max-h-[120px] overflow-y-auto"
+            style={{ height: "38px" }}
+            onInput={(e) => {
+              const el = e.currentTarget;
+              el.style.height = "38px";
+              el.style.height = Math.min(el.scrollHeight, 120) + "px";
+            }}
+          />
+          <button
+            type="submit"
+            disabled={loading || !input.trim()}
+            aria-label="Send question"
+            className="flex-shrink-0 w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? (
+              <svg
+                className="w-4 h-4 animate-spin"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v8H4z"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+              >
+                <path
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"
+                />
+              </svg>
+            )}
+          </button>
+        </form>
+        <p className="text-[10px] text-gray-400 mt-1.5 px-1">
+          Press Enter to send · Shift+Enter for new line
+        </p>
+      </div>
+    </div>
+  );
+}

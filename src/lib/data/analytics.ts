@@ -519,6 +519,7 @@ export interface EmployeeBenchmark {
   role: string;
   department: string;
   totalMinutes: number;
+  sessionCount: number;
   repetitiveMinutes: number;
   /** repetitiveMinutes / totalMinutes × 100 */
   repetitivePercent: number;
@@ -547,7 +548,7 @@ export function employeeBenchmarks(
   // Accumulate per-employee metrics
   const empMap = new Map<string, {
     name: string; role: string; department: string;
-    totalMin: number; repMin: number;
+    totalMin: number; repMin: number; sessionCount: number;
     tasks: Map<string, number>;
     hourlyRate: number | null;
   }>();
@@ -562,12 +563,14 @@ export function employeeBenchmarks(
       role: emp?.role ?? "Unknown",
       department: log.department,
       totalMin: 0,
+      sessionCount: 0,
       repMin: 0,
       tasks: new Map<string, number>(),
       hourlyRate: emp?.compensation.hourlyCostInr ?? null,
     };
 
     entry.totalMin += log.durationMinutes;
+    entry.sessionCount += 1;
 
     if (log.isRepetitive) {
       entry.repMin += log.durationMinutes;
@@ -613,6 +616,7 @@ export function employeeBenchmarks(
         role: v.role,
         department: v.department,
         totalMinutes: round2(v.totalMin),
+        sessionCount: v.sessionCount,
         repetitiveMinutes: round2(v.repMin),
         repetitivePercent: repPct,
         topRepetitiveTasks: topTasks,
@@ -722,6 +726,15 @@ export interface WeekOverWeekInsights {
 export function weekOverWeekTrends(
   logs: NormalizedActivityLog[]
 ): WeekOverWeekResult {
+  // TEMP DEBUG: log incoming normalized logs summary
+  // eslint-disable-next-line no-console
+  console.log("[analytics] weekOverWeekTrends received logs:", logs.length);
+  // print small sample (rowIndex + whether timestamp exists)
+  // eslint-disable-next-line no-console
+  console.log(
+    "[analytics] sample rows:",
+    logs.slice(0, 3).map((r) => ({ rowIndex: r.rowIndex, hasTimestamp: !!r.timestamp, tsISO: r.timestamp ? r.timestamp.toISOString() : null }))
+  );
   const repMap  = new Map<WeekKey, { total: number; rep: number; sessions: number }>();
   const taskMap = new Map<string, { rep: number; sessions: number }>();  // key: "week|task"
   const deptMap = new Map<string, { total: number; rep: number; empIds: Set<string> }>(); // key: "week|dept"
@@ -792,6 +805,12 @@ export function weekOverWeekTrends(
     taskTrends,
     departmentTrends
   );
+
+  // TEMP DEBUG: log computed workload summary
+  // eslint-disable-next-line no-console
+  console.log("[analytics] repetitiveWorkload.length:", repetitiveWorkload.length);
+  // eslint-disable-next-line no-console
+  console.log("[analytics] repetitiveWorkload sample:", repetitiveWorkload.slice(0, 3));
 
   return { repetitiveWorkload, taskTrends, departmentTrends, insights };
 }
