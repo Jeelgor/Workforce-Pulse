@@ -1,13 +1,19 @@
 // =============================================================================
 // pdf.ts — Structured PDF export for Workforce Pulse
 //
-// Uses jsPDF to generate a multi-page report directly from analytics data.
-// No DOM capture / html2canvas — the report is built programmatically so it
-// renders cleanly at any resolution and works in all browsers.
+// Uses jsPDF to generate a multi-page A4 report directly from analytics data.
+// No DOM capture — built programmatically for clean rendering at any resolution.
+//
+// Typography rules:
+//  - Helvetica only (built-in, no font embedding needed)
+//  - All text is ASCII-safe: no Unicode symbols, no emojis, no special glyphs
+//  - INR values use "INR" prefix, not the Rupee sign (not in Helvetica)
+//  - Arrows use ASCII: "^" up, "v" down, "->" direction
+//  - Em-dashes replaced with " - " or "N/A"
 // =============================================================================
 
 import { jsPDF } from "jspdf";
-import { formatINR, formatHours } from "@/lib/utils/index";
+import { formatHours } from "@/lib/utils/index";
 import type {
   RecoverableHoursResult,
   RecoverableInrResult,
@@ -38,25 +44,66 @@ export interface ExportPayload {
 // Layout constants
 // ---------------------------------------------------------------------------
 
-const PAGE_W = 210;   // A4 mm
-const PAGE_H = 297;
-const MARGIN = 14;
+const PAGE_W    = 210;              // A4 width mm
+const PAGE_H    = 297;              // A4 height mm
+const MARGIN    = 14;               // left/right margin mm
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const LINE_H = 6;
-const SECTION_GAP = 8;
-
-// Brand colours (RGB)
-const C_DARK   = [17,  24,  39]  as const;  // gray-900
-const C_MID    = [75,  85,  99]  as const;  // gray-600
-const C_LIGHT  = [156, 163, 175] as const;  // gray-400
-const C_ACCENT = [29,  78,  216] as const;  // blue-700
-const C_RED    = [220, 38,  38]  as const;  // red-600
-const C_AMBER  = [217, 119, 6]   as const;  // amber-600
-const C_GREEN  = [22,  163, 74]  as const;  // green-600
-const C_BG     = [248, 249, 251] as const;  // slate-50
+const ROW_H     = 7;                // table row height mm (comfortable reading)
+const SECTION_GAP = 6;             // vertical gap between sections mm
 
 // ---------------------------------------------------------------------------
-// Cursor helper — tracks Y position and auto-paginates
+// Colour palette (RGB tuples)
+// ---------------------------------------------------------------------------
+
+const C_DARK   = [17,  24,  39]  as const;  // gray-900  — body text
+const C_MID    = [75,  85,  99]  as const;  // gray-600  — secondary text
+const C_LIGHT  = [156, 163, 175] as const;  // gray-400  — captions / rules
+const C_ACCENT = [29,  78,  216] as const;  // blue-700  — section headers
+const C_RED    = [185, 28,  28]  as const;  // red-700   — high severity
+const C_AMBER  = [180, 83,  9]   as const;  // amber-800 — medium severity
+const C_BLUE   = [29,  78,  216] as const;  // blue-700  — low severity
+const C_BG     = [248, 249, 251] as const;  // slate-50  — KPI box bg
+const C_TH_BG  = [241, 245, 249] as const;  // slate-100 — table header bg
+const C_ALT_BG = [249, 250, 251] as const;  // gray-50   — alternating row bg
+const C_RULE   = [229, 231, 235] as const;  // gray-200  — divider lines
+
+// ---------------------------------------------------------------------------
+// ASCII-safe formatters
+// ---------------------------------------------------------------------------
+
+/** Format INR without the Rupee glyph — safe for Helvetica */
+function fmtINR(amount: number): string {
+  if (!Number.isFinite(amount)) return "N/A";
+  if (amount >= 1_000_000) return `INR ${(amount / 1_000_000).toFixed(2)}M`;
+  if (amount >= 1_000)     return `INR ${(amount / 1_000).toFixed(1)}K`;
+  return `INR ${Math.round(amount).toLocaleString("en-IN")}`;
+}
+
+/** Format hours — ASCII safe */
+function fmtHours(h: number): string {
+  return formatHours(h).replace(/[^\x00-\x7F]/g, "");  // strip any non-ASCII
+}
+
+/** Replace any non-ASCII characters with safe equivalents */
+function ascii(s: string): string {
+  return s
+    .replace(/[\u2014\u2013]/g, " - ")   // em/en dash -> " - "
+    .replace(/[\u2192\u2794]/g, "->")    // arrows -> "->"
+    .replace(/[\u25B2\u25B4]/g, "^")     // up triangles -> "^"
+    .replace(/[\u25BC\u25BE]/g, "v")     // down triangles -> "v"
+    .replace(/[\u0394]/g, "D")           // Delta -> "D"
+    .replace(/[\u00B7\u2022\u2027]/g, ".") // middle dots -> "."
+    .replace(/[^\x00-\x7F]/g, "");       // strip remaining non-ASCII
+}
+
+/** Fallback for null/undefined display values */
+function orNA(v: string | number | null | undefined): string {
+  if (v === null || v === undefined || v === "" || v === "—") return "N/A";
+  return ascii(String(v));
+}
+
+// ---------------------------------------------------------------------------
+// Cursor — tracks Y and auto-paginates
 // ---------------------------------------------------------------------------
 
 class Cursor {
@@ -65,26 +112,24 @@ class Cursor {
     this.y = startY;
   }
 
-  /** Advance by `delta` mm; add a new page if needed */
   advance(delta: number) {
     this.y += delta;
-    if (this.y > PAGE_H - MARGIN - 10) {
+    if (this.y > PAGE_H - MARGIN - 12) {
       this.doc.addPage();
-      this.y = MARGIN + 6;
+      this.y = MARGIN + 8;
     }
   }
 
-  /** Ensure at least `needed` mm remain on the page */
   ensureSpace(needed: number) {
-    if (this.y + needed > PAGE_H - MARGIN - 10) {
+    if (this.y + needed > PAGE_H - MARGIN - 12) {
       this.doc.addPage();
-      this.y = MARGIN + 6;
+      this.y = MARGIN + 8;
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Drawing helpers
+// Drawing primitives
 // ---------------------------------------------------------------------------
 
 function setFont(doc: jsPDF, size: number, style: "normal" | "bold" = "normal") {
@@ -96,13 +141,7 @@ function setColor(doc: jsPDF, rgb: readonly [number, number, number]) {
   doc.setTextColor(rgb[0], rgb[1], rgb[2]);
 }
 
-function drawHRule(doc: jsPDF, y: number, color: [number, number, number] = [...C_LIGHT]) {
-  doc.setDrawColor(color[0], color[1], color[2]);
-  doc.setLineWidth(0.3);
-  doc.line(MARGIN, y, PAGE_W - MARGIN, y);
-}
-
-function drawFilledRect(
+function fillRect(
   doc: jsPDF,
   x: number, y: number, w: number, h: number,
   rgb: readonly [number, number, number]
@@ -111,29 +150,28 @@ function drawFilledRect(
   doc.rect(x, y, w, h, "F");
 }
 
-/** Severity colour */
-function severityColor(s: string): readonly [number, number, number] {
-  if (s === "high")   return C_RED;
-  if (s === "medium") return C_AMBER;
-  return C_ACCENT;
+function hRule(doc: jsPDF, y: number, rgb: readonly [number, number, number] = C_RULE) {
+  doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+  doc.setLineWidth(0.25);
+  doc.line(MARGIN, y, PAGE_W - MARGIN, y);
 }
 
 // ---------------------------------------------------------------------------
-// Section header
+// Section header — blue bar with white uppercase title
 // ---------------------------------------------------------------------------
 
 function sectionHeader(doc: jsPDF, cur: Cursor, title: string) {
-  cur.ensureSpace(14);
-  drawFilledRect(doc, MARGIN, cur.y, CONTENT_W, 7, C_ACCENT);
+  cur.ensureSpace(16);
+  fillRect(doc, MARGIN, cur.y, CONTENT_W, 7.5, C_ACCENT);
   doc.setTextColor(255, 255, 255);
-  setFont(doc, 9, "bold");
-  doc.text(title.toUpperCase(), MARGIN + 3, cur.y + 5);
-  cur.advance(7 + 3);
+  setFont(doc, 8.5, "bold");
+  doc.text(ascii(title).toUpperCase(), MARGIN + 3, cur.y + 5.2);
+  cur.advance(7.5 + 4);
   setColor(doc, C_DARK);
 }
 
 // ---------------------------------------------------------------------------
-// KPI row (3 boxes side by side)
+// KPI row — 3 equal boxes
 // ---------------------------------------------------------------------------
 
 function kpiRow(
@@ -141,80 +179,114 @@ function kpiRow(
   cur: Cursor,
   items: { label: string; value: string; sub?: string }[]
 ) {
-  const boxW = (CONTENT_W - 4) / 3;
-  const boxH = 18;
-  cur.ensureSpace(boxH + 4);
+  const gap  = 3;
+  const boxW = (CONTENT_W - gap * 2) / 3;
+  const boxH = 20;
+  cur.ensureSpace(boxH + 6);
 
   items.forEach((item, i) => {
-    const x = MARGIN + i * (boxW + 2);
-    drawFilledRect(doc, x, cur.y, boxW, boxH, C_BG);
-    doc.setDrawColor(229, 231, 235);
+    const x = MARGIN + i * (boxW + gap);
+
+    // Box background + border
+    fillRect(doc, x, cur.y, boxW, boxH, C_BG);
+    doc.setDrawColor(C_RULE[0], C_RULE[1], C_RULE[2]);
     doc.setLineWidth(0.3);
     doc.rect(x, cur.y, boxW, boxH);
 
+    // Label
     setFont(doc, 7);
     setColor(doc, C_MID);
-    doc.text(item.label, x + 3, cur.y + 5);
+    doc.text(ascii(item.label), x + 3, cur.y + 5.5);
 
-    setFont(doc, 11, "bold");
+    // Value — large bold
+    setFont(doc, 12, "bold");
     setColor(doc, C_DARK);
-    doc.text(item.value, x + 3, cur.y + 12);
+    // Truncate if too wide
+    const maxW = boxW - 6;
+    const valText = doc.splitTextToSize(ascii(item.value), maxW)[0] as string;
+    doc.text(valText, x + 3, cur.y + 13.5);
 
+    // Sub-label
     if (item.sub) {
       setFont(doc, 6.5);
       setColor(doc, C_LIGHT);
-      doc.text(item.sub, x + 3, cur.y + 16.5);
+      doc.text(ascii(item.sub), x + 3, cur.y + 18);
     }
   });
 
-  cur.advance(boxH + 4);
+  cur.advance(boxH + 6);
 }
 
 // ---------------------------------------------------------------------------
-// Simple two-column table
+// Table
+//
+// Alignment per column: "L" = left (default), "R" = right-aligned
+// Right-alignment is used for numeric columns.
 // ---------------------------------------------------------------------------
+
+type ColAlign = "L" | "R";
 
 function table(
   doc: jsPDF,
   cur: Cursor,
   headers: string[],
   rows: string[][],
-  colWidths?: number[]
+  colWidths?: number[],
+  colAligns?: ColAlign[]
 ) {
   const widths = colWidths ?? headers.map(() => CONTENT_W / headers.length);
-  const rowH = LINE_H;
+  const aligns = colAligns ?? headers.map(() => "L" as ColAlign);
 
-  // Header row
-  cur.ensureSpace(rowH + 2);
-  drawFilledRect(doc, MARGIN, cur.y, CONTENT_W, rowH, [241, 245, 249]);
+  // ── Header row ────────────────────────────────────────────────────────────
+  cur.ensureSpace(ROW_H + 2);
+  fillRect(doc, MARGIN, cur.y, CONTENT_W, ROW_H, C_TH_BG);
   setFont(doc, 7.5, "bold");
   setColor(doc, C_MID);
-  let x = MARGIN + 2;
+
+  let x = MARGIN;
   headers.forEach((h, i) => {
-    doc.text(h, x, cur.y + 4.5);
+    const cellX = aligns[i] === "R"
+      ? x + widths[i] - 3
+      : x + 3;
+    doc.text(ascii(h), cellX, cur.y + 4.8, {
+      align: aligns[i] === "R" ? "right" : "left",
+    });
     x += widths[i];
   });
-  cur.advance(rowH);
+  cur.advance(ROW_H);
 
-  // Data rows
+  // ── Data rows ─────────────────────────────────────────────────────────────
   rows.forEach((row, ri) => {
-    cur.ensureSpace(rowH);
+    cur.ensureSpace(ROW_H);
+
+    // Alternating row background
     if (ri % 2 === 1) {
-      drawFilledRect(doc, MARGIN, cur.y, CONTENT_W, rowH, [249, 250, 251]);
+      fillRect(doc, MARGIN, cur.y, CONTENT_W, ROW_H, C_ALT_BG);
     }
+
     setFont(doc, 7.5);
     setColor(doc, C_DARK);
-    x = MARGIN + 2;
+    x = MARGIN;
+
     row.forEach((cell, ci) => {
-      const maxW = widths[ci] - 3;
-      const truncated = doc.splitTextToSize(cell, maxW)[0] as string;
-      doc.text(truncated, x, cur.y + 4.5);
+      const maxW = widths[ci] - 5;
+      const safeCell = ascii(cell);
+      const truncated = doc.splitTextToSize(safeCell, maxW)[0] as string;
+      const cellX = aligns[ci] === "R"
+        ? x + widths[ci] - 3
+        : x + 3;
+      doc.text(truncated, cellX, cur.y + 4.8, {
+        align: aligns[ci] === "R" ? "right" : "left",
+      });
       x += widths[ci];
     });
-    cur.advance(rowH);
+
+    cur.advance(ROW_H);
   });
 
-  cur.advance(2);
+  // Bottom rule under table
+  hRule(doc, cur.y);
+  cur.advance(3);
 }
 
 // ---------------------------------------------------------------------------
@@ -225,87 +297,108 @@ export async function exportDashboardPDF(payload: ExportPayload): Promise<void> 
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const cur = new Cursor(doc, MARGIN);
 
-  // ── Cover / title ─────────────────────────────────────────────────────────
-  drawFilledRect(doc, 0, 0, PAGE_W, 42, C_ACCENT);
+  // ── Cover banner ──────────────────────────────────────────────────────────
+  fillRect(doc, 0, 0, PAGE_W, 44, C_ACCENT);
 
   doc.setTextColor(255, 255, 255);
-  setFont(doc, 20, "bold");
-  doc.text("Workforce Pulse", MARGIN, 18);
+  setFont(doc, 22, "bold");
+  doc.text("Workforce Pulse", MARGIN, 19);
 
   setFont(doc, 10);
-  doc.text("Executive Analytics Report", MARGIN, 26);
+  doc.text("Executive Analytics Report", MARGIN, 28);
 
   setFont(doc, 8);
-  const genDate = new Date(payload.generatedAt).toLocaleString("en-IN", {
+  // Format date without locale-specific Unicode
+  const d = new Date(payload.generatedAt);
+  const genDate = d.toLocaleDateString("en-GB", {
     timeZone: "Asia/Kolkata",
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-  doc.text(`Generated: ${genDate} IST`, MARGIN, 33);
+    day: "2-digit", month: "short", year: "numeric",
+  }) + "  " + d.toLocaleTimeString("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit", minute: "2-digit",
+  }) + " IST";
+  doc.text(`Generated: ${genDate}`, MARGIN, 37);
 
   if (payload.filters.department) {
-    doc.text(`Filter: ${payload.filters.department}`, MARGIN + 80, 33);
+    doc.text(`Department filter: ${ascii(payload.filters.department)}`, MARGIN + 90, 37);
+  }
+  if (payload.filters.startDate || payload.filters.endDate) {
+    const range = [payload.filters.startDate, payload.filters.endDate]
+      .filter(Boolean).join(" to ");
+    doc.text(`Date range: ${range}`, MARGIN, 42);
   }
 
-  cur.y = 50;
+  cur.y = 52;
 
-  // ── 1. Executive KPIs ─────────────────────────────────────────────────────
+  // =========================================================================
+  // 1. Executive KPIs
+  // =========================================================================
   sectionHeader(doc, cur, "1. Executive KPIs");
 
   kpiRow(doc, cur, [
     {
-      label: "Recoverable Hours",
-      value: formatHours(payload.recoverable.totalRecoverableHours),
-      sub: `${payload.recoverable.totalRepetitiveMinutes} repetitive min`,
+      label: "Recoverable Hours / Month",
+      value: fmtHours(payload.recoverable.totalRecoverableHours),
+      sub: `${payload.recoverable.totalRepetitiveMinutes.toLocaleString()} repetitive min`,
     },
     {
-      label: "Recoverable INR / month",
-      value: formatINR(payload.recoverableInr.totalRecoverableInr),
-      sub: `${payload.recoverableInr.metadata.rowsSkippedNoCompensation} rows w/o comp.`,
+      label: "Recoverable Cost / Month",
+      value: fmtINR(payload.recoverableInr.totalRecoverableInr),
+      sub: `${payload.recoverableInr.metadata.rowsSkippedNoCompensation} rows without comp. data`,
     },
     {
       label: "Top Automation Priority",
-      value: payload.automationPriority[0]?.taskCategory ?? "—",
-      sub: `Score ${payload.automationPriority[0]?.score ?? "—"} / 100`,
+      value: orNA(payload.automationPriority[0]?.taskCategory),
+      sub: payload.automationPriority[0]
+        ? `Score: ${payload.automationPriority[0].score} / 100`
+        : "No data",
     },
   ]);
 
   cur.advance(SECTION_GAP);
 
-  // ── 2. Recoverable hours by department ────────────────────────────────────
+  // =========================================================================
+  // 2. Recoverable Hours by Department
+  // =========================================================================
   sectionHeader(doc, cur, "2. Recoverable Hours by Department");
 
   table(
     doc, cur,
-    ["Department", "Rep. Minutes", "Rec. Minutes", "Rec. Hours"],
+    ["Department", "Repetitive Min", "Recoverable Min", "Recoverable Hrs"],
     payload.recoverable.byDepartment.map((d) => [
       d.department,
       d.repetitiveMinutes.toLocaleString(),
       d.recoverableMinutes.toLocaleString(),
       (d.recoverableMinutes / 60).toFixed(1),
     ]),
-    [60, 40, 40, 42]
+    [58, 40, 44, 40],
+    ["L", "R", "R", "R"]
   );
 
   cur.advance(SECTION_GAP);
 
-  // ── 3. Recoverable INR by department ──────────────────────────────────────
-  sectionHeader(doc, cur, "3. Recoverable INR by Department");
+  // =========================================================================
+  // 3. Recoverable Cost by Department
+  // =========================================================================
+  sectionHeader(doc, cur, "3. Recoverable Cost by Department (INR / Month)");
 
   table(
     doc, cur,
-    ["Department", "Rec. INR", "Employees"],
+    ["Department", "Recoverable Cost (INR)", "Employees"],
     payload.recoverableInr.byDepartment.map((d) => [
       d.department,
-      `₹${d.recoverableInr.toLocaleString()}`,
+      fmtINR(d.recoverableInr),
       String(d.contributingEmployeeIds.length),
     ]),
-    [80, 60, 42]
+    [72, 80, 30],
+    ["L", "R", "R"]
   );
 
   cur.advance(SECTION_GAP);
 
-  // ── 4. Automation priority ranking ────────────────────────────────────────
+  // =========================================================================
+  // 4. Automation Priority Ranking
+  // =========================================================================
   sectionHeader(doc, cur, "4. Automation Priority Ranking");
 
   table(
@@ -316,37 +409,48 @@ export async function exportDashboardPDF(payload: ExportPayload): Promise<void> 
       item.taskCategory,
       `${item.score} / 100`,
       `${Math.round(item.automationFeasibility * 100)}%`,
-      `₹${item.estimatedInrImpact.toLocaleString()}`,
+      fmtINR(item.estimatedInrImpact),
       String(item.employeeCount),
     ]),
-    [10, 52, 22, 24, 36, 24]
+    [10, 54, 24, 24, 40, 30],
+    ["R", "L", "R", "R", "R", "R"]
   );
 
   cur.advance(SECTION_GAP);
 
-  // ── 5. Employee benchmarks ────────────────────────────────────────────────
+  // =========================================================================
+  // 5. Employee Benchmarks
+  // =========================================================================
   sectionHeader(doc, cur, "5. Employee Benchmarks");
 
   table(
     doc, cur,
-    ["Employee", "Role", "Rep %", "Role Avg %", "Δ vs Avg", "Est. Cost INR"],
+    ["Employee", "Role", "Rep %", "Role Avg", "vs Avg", "Est. Cost (INR)"],
     payload.employeeBenchmarks.slice(0, 15).map((b) => {
       const delta = b.peerComparison.deltaFromRoleAvg;
+      const deltaStr = delta > 0
+        ? `+${delta} pp`
+        : delta < 0
+        ? `${delta} pp`
+        : "0 pp";
       return [
         b.name,
         b.role,
         `${b.repetitivePercent}%`,
         `${b.peerComparison.roleAvgRepetitivePercent}%`,
-        delta > 0 ? `+${delta} pp` : delta < 0 ? `${delta} pp` : "—",
-        `₹${b.estimatedRepetitiveCostInr.toLocaleString()}`,
+        deltaStr,
+        fmtINR(b.estimatedRepetitiveCostInr),
       ];
     }),
-    [38, 38, 18, 22, 20, 36]
+    [36, 40, 18, 20, 20, 48],
+    ["L", "L", "R", "R", "R", "R"]
   );
 
   cur.advance(SECTION_GAP);
 
-  // ── 6. Week-over-week trends ──────────────────────────────────────────────
+  // =========================================================================
+  // 6. Week-over-Week Trends
+  // =========================================================================
   if (payload.weekOverWeek && payload.weekOverWeek.repetitiveWorkload.length > 0) {
     sectionHeader(doc, cur, "6. Week-over-Week Trends");
 
@@ -360,146 +464,194 @@ export async function exportDashboardPDF(payload: ExportPayload): Promise<void> 
         w.totalMinutes.toLocaleString(),
         String(w.sessionCount),
       ]),
-      [36, 22, 32, 32, 24]
+      [38, 24, 36, 36, 28],
+      ["L", "R", "R", "R", "R"]
     );
 
+    // WoW insight bullets
     const ins = payload.weekOverWeek.insights;
     if (ins) {
-      cur.ensureSpace(24);
+      cur.ensureSpace(28);
+
       setFont(doc, 8, "bold");
       setColor(doc, C_DARK);
-      doc.text("WoW Insights", MARGIN, cur.y);
-      cur.advance(5);
+      doc.text("Key Insights", MARGIN, cur.y);
+      cur.advance(6);
 
-      const insightLines: string[] = [];
+      const bullets: { prefix: string; text: string }[] = [];
+
       if (ins.largestRepetitiveIncrease) {
-        insightLines.push(
-          `▲ Largest spike: ${ins.largestRepetitiveIncrease.fromWeek} → ${ins.largestRepetitiveIncrease.toWeek} (+${ins.largestRepetitiveIncrease.deltaPercent} pp)`
-        );
+        bullets.push({
+          prefix: "Largest spike:",
+          text: `${ins.largestRepetitiveIncrease.fromWeek} -> ${ins.largestRepetitiveIncrease.toWeek}  (+${ins.largestRepetitiveIncrease.deltaPercent} pp)`,
+        });
       }
       if (ins.largestRepetitiveDecrease) {
-        insightLines.push(
-          `▼ Largest drop: ${ins.largestRepetitiveDecrease.fromWeek} → ${ins.largestRepetitiveDecrease.toWeek} (${ins.largestRepetitiveDecrease.deltaPercent} pp)`
-        );
+        bullets.push({
+          prefix: "Largest drop:",
+          text: `${ins.largestRepetitiveDecrease.fromWeek} -> ${ins.largestRepetitiveDecrease.toWeek}  (${ins.largestRepetitiveDecrease.deltaPercent} pp)`,
+        });
       }
       if (ins.fastestGrowingTask) {
-        insightLines.push(
-          `📈 Fastest-growing task: ${ins.fastestGrowingTask.taskCategory} (+${ins.fastestGrowingTask.deltaMinutes} min)`
-        );
+        bullets.push({
+          prefix: "Fastest-growing task:",
+          text: `${ins.fastestGrowingTask.taskCategory}  (+${ins.fastestGrowingTask.deltaMinutes} min,  ${ins.fastestGrowingTask.fromWeek} -> ${ins.fastestGrowingTask.toWeek})`,
+        });
       }
       if (ins.biggestDeptShift) {
-        insightLines.push(
-          `🏢 Biggest dept shift: ${ins.biggestDeptShift.department} ${ins.biggestDeptShift.direction === "increase" ? "+" : "-"}${ins.biggestDeptShift.deltaMinutes} min`
-        );
+        const dir = ins.biggestDeptShift.direction === "increase" ? "+" : "-";
+        bullets.push({
+          prefix: "Biggest dept shift:",
+          text: `${ins.biggestDeptShift.department}  (${dir}${ins.biggestDeptShift.deltaMinutes} min,  ${ins.biggestDeptShift.fromWeek} -> ${ins.biggestDeptShift.toWeek})`,
+        });
       }
 
-      setFont(doc, 8);
-      setColor(doc, C_MID);
-      insightLines.forEach((line) => {
-        cur.ensureSpace(LINE_H);
-        doc.text(line, MARGIN + 2, cur.y);
-        cur.advance(LINE_H);
+      bullets.forEach((b) => {
+        cur.ensureSpace(ROW_H);
+        // Bullet dot
+        setFont(doc, 8, "bold");
+        setColor(doc, C_ACCENT);
+        doc.text("*", MARGIN + 2, cur.y);
+        // Prefix
+        setFont(doc, 7.5, "bold");
+        setColor(doc, C_DARK);
+        doc.text(b.prefix, MARGIN + 6, cur.y);
+        // Value
+        setFont(doc, 7.5);
+        setColor(doc, C_MID);
+        doc.text(b.text, MARGIN + 6 + doc.getTextWidth(b.prefix) + 2, cur.y);
+        cur.advance(ROW_H - 1);
       });
     }
 
     cur.advance(SECTION_GAP);
   }
 
-  // ── 7. Anomalies ──────────────────────────────────────────────────────────
+  // =========================================================================
+  // 7. Anomalies & Alerts
+  // =========================================================================
   sectionHeader(doc, cur, "7. Anomalies & Alerts");
 
   if (payload.anomalies.length === 0) {
+    cur.ensureSpace(10);
     setFont(doc, 8);
     setColor(doc, C_MID);
-    doc.text("No anomalies detected.", MARGIN + 2, cur.y);
-    cur.advance(LINE_H);
+    doc.text("No anomalies detected in the current dataset.", MARGIN + 3, cur.y);
+    cur.advance(10);
   } else {
-    payload.anomalies.forEach((a) => {
-      cur.ensureSpace(18);
+    payload.anomalies.forEach((a, idx) => {
+      cur.ensureSpace(22);
 
-      // Severity pill
-      const sc = severityColor(a.severity);
-      drawFilledRect(doc, MARGIN, cur.y, 18, 5.5, sc);
+      // Severity label box (left edge)
+      const sc: readonly [number, number, number] =
+        a.severity === "high"   ? C_RED   :
+        a.severity === "medium" ? C_AMBER :
+        C_BLUE;
+
+      fillRect(doc, MARGIN, cur.y, 16, 6, sc);
       doc.setTextColor(255, 255, 255);
-      setFont(doc, 6.5, "bold");
-      doc.text(a.severity.toUpperCase(), MARGIN + 1.5, cur.y + 4);
+      setFont(doc, 6, "bold");
+      doc.text(a.severity.toUpperCase(), MARGIN + 1.5, cur.y + 4.2);
 
       // Title
       setFont(doc, 8, "bold");
       setColor(doc, C_DARK);
-      doc.text(a.title, MARGIN + 21, cur.y + 4);
-      cur.advance(7);
+      const titleText = ascii(a.title);
+      doc.text(titleText, MARGIN + 19, cur.y + 4.2);
+      cur.advance(8);
 
-      // Explanation (wrapped)
+      // Explanation — wrapped, indented
       setFont(doc, 7.5);
       setColor(doc, C_MID);
-      const wrapped = doc.splitTextToSize(a.explanation, CONTENT_W - 4) as string[];
-      wrapped.forEach((line: string) => {
-        cur.ensureSpace(LINE_H);
-        doc.text(line, MARGIN + 2, cur.y);
-        cur.advance(LINE_H - 1);
+      const explanationLines = doc.splitTextToSize(
+        ascii(a.explanation),
+        CONTENT_W - 6
+      ) as string[];
+      explanationLines.forEach((line: string) => {
+        cur.ensureSpace(ROW_H);
+        doc.text(line, MARGIN + 3, cur.y);
+        cur.advance(5.5);
       });
 
-      // Supporting metrics
+      // Supporting metrics — single line, smaller, lighter
       const metricsStr = Object.entries(a.supportingMetrics)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("  ·  ");
-      setFont(doc, 7);
-      setColor(doc, C_LIGHT);
-      const mWrapped = doc.splitTextToSize(metricsStr, CONTENT_W - 4) as string[];
-      mWrapped.forEach((line: string) => {
-        cur.ensureSpace(LINE_H);
-        doc.text(line, MARGIN + 2, cur.y);
-        cur.advance(LINE_H - 1);
-      });
+        .map(([k, v]) => `${ascii(k)}: ${ascii(String(v))}`)
+        .join("   ");
+      if (metricsStr) {
+        cur.ensureSpace(ROW_H);
+        setFont(doc, 6.5);
+        setColor(doc, C_LIGHT);
+        const mLines = doc.splitTextToSize(metricsStr, CONTENT_W - 6) as string[];
+        mLines.forEach((line: string) => {
+          cur.ensureSpace(6);
+          doc.text(line, MARGIN + 3, cur.y);
+          cur.advance(5);
+        });
+      }
 
-      cur.advance(3);
-      drawHRule(doc, cur.y, [229, 231, 235]);
-      cur.advance(3);
+      // Divider between anomalies (not after the last one)
+      if (idx < payload.anomalies.length - 1) {
+        cur.advance(2);
+        hRule(doc, cur.y, C_RULE);
+        cur.advance(4);
+      } else {
+        cur.advance(4);
+      }
     });
   }
 
   cur.advance(SECTION_GAP);
 
-  // ── 8. Data quality ───────────────────────────────────────────────────────
-  sectionHeader(doc, cur, "8. Data Quality");
+  // =========================================================================
+  // 8. Data Quality Audit
+  // =========================================================================
+  sectionHeader(doc, cur, "8. Data Quality Audit");
 
   const qr = payload.qualityReport;
   table(
     doc, cur,
     ["Metric", "Value"],
     [
-      ["Total raw rows",                  String(qr.totalRawRows)],
-      ["Normalized rows",                 String(qr.normalizedRows)],
-      ["Dropped rows",                    String(qr.droppedRows)],
-      ["Fixed / corrected rows",          String(qr.fixedRows)],
-      ["Flagged rows (zero / outlier)",   String(qr.flaggedRows)],
-      ["Duplicate rows removed",          String(qr.duplicateRowsRemoved)],
-      ["Outlier rows (>720 min)",         String(qr.outlierRows)],
-      ["Duplicate employee conflicts",    String(qr.duplicateEmployeeConflicts)],
-      ["Employees missing metadata",      `${qr.employeesMissingMetadataCount} (${qr.employeesMissingMetadata.join(", ") || "none"})`],
-      ["Employees with no activity",      `${qr.metadataWithoutActivityCount}`],
+      ["Total raw rows",                String(qr.totalRawRows)],
+      ["Normalized rows",               String(qr.normalizedRows)],
+      ["Dropped rows",                  String(qr.droppedRows)],
+      ["Fixed / corrected rows",        String(qr.fixedRows)],
+      ["Flagged rows (zero/outlier)",   String(qr.flaggedRows)],
+      ["Duplicate rows removed",        String(qr.duplicateRowsRemoved)],
+      ["Outlier rows (>720 min)",       String(qr.outlierRows)],
+      ["Duplicate employee conflicts",  String(qr.duplicateEmployeeConflicts)],
+      ["Employees missing metadata",    `${qr.employeesMissingMetadataCount}  (${qr.employeesMissingMetadata.join(", ") || "none"})`],
+      ["Employees with no activity",    String(qr.metadataWithoutActivityCount)],
+      ["Report generated at",           ascii(new Date(qr.generatedAt).toLocaleString("en-GB", { timeZone: "Asia/Kolkata" }) + " IST")],
     ],
-    [100, 82]
+    [110, 72],
+    ["L", "R"]
   );
 
-  // ── Footer on every page ──────────────────────────────────────────────────
+  // =========================================================================
+  // Footer — every page
+  // =========================================================================
   const totalPages = (doc as any).internal.getNumberOfPages() as number;
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p);
-    drawHRule(doc, PAGE_H - 10);
-    setFont(doc, 7);
+    hRule(doc, PAGE_H - 11, C_RULE);
+    setFont(doc, 6.5);
     setColor(doc, C_LIGHT);
-    doc.text("Workforce Pulse — Confidential", MARGIN, PAGE_H - 6);
+    doc.text("Workforce Pulse  |  Confidential", MARGIN, PAGE_H - 6.5);
     doc.text(
       `Page ${p} of ${totalPages}`,
       PAGE_W - MARGIN,
-      PAGE_H - 6,
+      PAGE_H - 6.5,
       { align: "right" }
     );
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
-  const filename = `workforce-pulse-${new Date().toISOString().slice(0, 10)}.pdf`;
-  doc.save(filename);
+  // =========================================================================
+  // Save
+  // =========================================================================
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const suffix  = payload.filters.department
+    ? `-${payload.filters.department.toLowerCase().replace(/\s+/g, "-")}`
+    : "";
+  doc.save(`workforce-pulse${suffix}-${dateStr}.pdf`);
 }

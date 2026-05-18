@@ -66,18 +66,20 @@ export default function DashboardShell({ initial }: { initial: any }) {
   }, [metrics, activeFilters]);
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-50 overflow-x-hidden">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 md:py-6 space-y-6">
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
-        <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b bg-slate-50 sticky top-0 z-40 pt-2">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Workforce Pulse</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
+        <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-4 border-b bg-slate-50 sticky top-0 z-40 pt-2">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 truncate">
+              Workforce Pulse
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5 hidden sm:block">
               Executive operations dashboard — actionable insights
             </p>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
             <ExportButton getPayload={getExportPayload} />
             <HeaderFilters departments={metrics?.departments ?? []} onApply={apply} />
           </div>

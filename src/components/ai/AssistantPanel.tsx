@@ -171,7 +171,7 @@ export default function AssistantPanel({
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="rounded-lg border bg-white shadow-sm flex flex-col h-[520px]">
+    <div className="rounded-lg border bg-white shadow-sm flex flex-col h-[420px] sm:h-[520px]">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <div className="flex items-center gap-2">
@@ -180,7 +180,7 @@ export default function AssistantPanel({
             Workforce Pulse Assistant
           </h3>
         </div>
-        <div className="text-xs text-gray-400">Powered by Groq · llama-3.3-70b</div>
+        <div className="text-xs text-gray-400 hidden sm:block">Powered by Groq · llama-3.3-70b</div>
       </div>
 
       {/* Message area */}

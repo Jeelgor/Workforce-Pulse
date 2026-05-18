@@ -1,40 +1,84 @@
 "use client";
 import * as React from "react";
 
-export default function HeaderFilters({ departments, onApply }: { departments: string[]; onApply: (f: { startDate?: string; endDate?: string; department?: string }) => void; }) {
-  const [startDate, setStartDate] = React.useState<string | undefined>(undefined);
-  const [endDate, setEndDate] = React.useState<string | undefined>(undefined);
-  const [department, setDepartment] = React.useState<string | undefined>(undefined);
+export default function HeaderFilters({
+  departments,
+  onApply,
+}: {
+  departments: string[];
+  onApply: (f: { startDate?: string; endDate?: string; department?: string }) => void;
+}) {
+  const [startDate, setStartDate] = React.useState<string>("");
+  const [endDate, setEndDate]     = React.useState<string>("");
+  const [department, setDepartment] = React.useState<string>("");
   const [submitting, setSubmitting] = React.useState(false);
 
+  const handleApply = async () => {
+    setSubmitting(true);
+    await onApply({
+      startDate:  startDate  || undefined,
+      endDate:    endDate    || undefined,
+      department: department || undefined,
+    });
+    setSubmitting(false);
+  };
+
   return (
-    <div className="sticky top-4 z-30 flex items-center gap-3 bg-white/50 backdrop-blur-sm border rounded-md p-2">
-      <div className="flex items-center gap-2">
-        <label htmlFor="startDate" className="text-xs text-muted-foreground">From</label>
-        <input id="startDate" aria-label="start date" className="input input-sm" type="date" value={startDate ?? ""} onChange={(e) => setStartDate(e.target.value || undefined)} />
+    <div className="flex flex-wrap items-end gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
+      {/* From date */}
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <label htmlFor="filter-from" className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+          From
+        </label>
+        <input
+          id="filter-from"
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="h-8 rounded-md border border-gray-200 bg-gray-50 px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-36"
+        />
       </div>
-      <div className="flex items-center gap-2">
-        <label htmlFor="endDate" className="text-xs text-muted-foreground">To</label>
-        <input id="endDate" aria-label="end date" className="input input-sm" type="date" value={endDate ?? ""} onChange={(e) => setEndDate(e.target.value || undefined)} />
+
+      {/* To date */}
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <label htmlFor="filter-to" className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+          To
+        </label>
+        <input
+          id="filter-to"
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="h-8 rounded-md border border-gray-200 bg-gray-50 px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-36"
+        />
       </div>
-      <div className="flex items-center gap-2">
-        <label htmlFor="dept" className="text-xs text-muted-foreground">Dept</label>
-        <select id="dept" aria-label="department" className="select select-sm" value={department ?? ""} onChange={(e) => setDepartment(e.target.value || undefined)}>
-          <option value="">All</option>
+
+      {/* Department */}
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <label htmlFor="filter-dept" className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+          Department
+        </label>
+        <select
+          id="filter-dept"
+          value={department}
+          onChange={(e) => setDepartment(e.target.value)}
+          className="h-8 rounded-md border border-gray-200 bg-gray-50 px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-40"
+        >
+          <option value="">All departments</option>
           {departments.map((d) => (
             <option key={d} value={d}>{d}</option>
           ))}
         </select>
       </div>
-      <div>
-        <button className="btn btn-sm" disabled={submitting} onClick={async () => {
-          setSubmitting(true);
-          await onApply({ startDate, endDate, department });
-          setSubmitting(false);
-        }}>
-          {submitting ? "Applying…" : "Apply"}
-        </button>
-      </div>
+
+      {/* Apply button */}
+      <button
+        onClick={handleApply}
+        disabled={submitting}
+        className="h-8 px-4 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+      >
+        {submitting ? "Applying…" : "Apply"}
+      </button>
     </div>
   );
 }

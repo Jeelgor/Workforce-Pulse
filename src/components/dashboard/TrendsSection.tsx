@@ -46,31 +46,19 @@ function WoWTooltip({ active, payload, label }: any) {
 function InsightPill({ label, value, sub, accent }: { label: string; value: React.ReactNode; sub?: string; accent?: "up" | "down" | "neutral"; }) {
   const accentColor = accent === "up" ? "text-red-600" : accent === "down" ? "text-green-600" : "text-gray-700";
   return (
-    <div className="rounded-md border bg-white p-3">
-      <div className="text-xs text-gray-500 mb-1">{label}</div>
-      <div className={`font-semibold text-sm ${accentColor}`}>{value}</div>
-      {sub && <div className="text-xs text-gray-400 mt-0.5">{sub}</div>}
+    <div className="rounded-md border bg-white p-2.5 min-w-0">
+      <div className="text-xs text-gray-500 mb-1 truncate">{label}</div>
+      <div className={`font-semibold text-sm truncate ${accentColor}`}>{value}</div>
+      {sub && <div className="text-xs text-gray-400 mt-0.5 truncate">{sub}</div>}
     </div>
   );
 }
 
 export default function TrendsSection({ weekOverWeek }: { weekOverWeek?: WeekOverWeekResult | any | null }) {
-  // Debug incoming prop (temporary)
-  // eslint-disable-next-line no-console
-  console.log("[TrendsSection] incoming weekOverWeek:", weekOverWeek);
-
   // Accept a few shapes: array, { repetitiveWorkload }, { repetitive_workload }, { week_over_week }
   let raw: any = weekOverWeek;
   if (typeof weekOverWeek === "string") {
-    try {
-      raw = JSON.parse(weekOverWeek);
-      // eslint-disable-next-line no-console
-      console.log("[TrendsSection] parsed JSON string for weekOverWeek");
-    } catch (e) {
-      // leave as-is
-      // eslint-disable-next-line no-console
-      console.warn("[TrendsSection] failed to parse weekOverWeek string");
-    }
+    try { raw = JSON.parse(weekOverWeek); } catch { /* leave as-is */ }
   }
 
   const workloadSource: any[] = Array.isArray(raw)
@@ -118,7 +106,7 @@ export default function TrendsSection({ weekOverWeek }: { weekOverWeek?: WeekOve
         )}
       </div>
 
-      <div className="w-full h-52">
+      <div className="w-full h-44 sm:h-52">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 4, right: 12, left: -8, bottom: 4 }}>
             <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
@@ -130,8 +118,9 @@ export default function TrendsSection({ weekOverWeek }: { weekOverWeek?: WeekOve
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full text-sm">
+      {/* Trends data table — horizontally scrollable on narrow screens */}
+      <div className="mt-4 overflow-x-auto -mx-5 px-5">
+        <table className="w-full min-w-[380px] text-sm">
           <thead>
             <tr className="border-b text-xs text-gray-500">
               <th className="text-left pb-2 font-medium">Week</th>
@@ -167,7 +156,7 @@ export default function TrendsSection({ weekOverWeek }: { weekOverWeek?: WeekOve
       </div>
 
       {insights && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
           <InsightPill
             label="Largest spike"
             value={insights.largestRepetitiveIncrease ? `+${insights.largestRepetitiveIncrease.deltaPercent} pp` : "—"}
