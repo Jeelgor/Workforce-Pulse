@@ -1,6 +1,13 @@
-import DashboardShell from "../components/dashboard/DashboardShell";
+import DashboardShellClient from "../components/dashboard/DashboardShellClient";
 import { loadAllData } from "../lib/data/loaders";
-import { recoverableHours, recoverableInr, automationPriorityRanking, employeeBenchmarks, weekOverWeekTrends, detectAnomalies } from "../lib/data/analytics";
+import {
+  recoverableHours,
+  recoverableInr,
+  automationPriorityRanking,
+  employeeBenchmarks,
+  weekOverWeekTrends,
+  detectAnomalies,
+} from "../lib/data/analytics";
 
 export default function Home() {
   const { logReport, joinReport, qualityReport } = loadAllData();
@@ -49,7 +56,7 @@ export default function Home() {
 
   return (
     <main>
-      <DashboardShell initial={initial} />
+      <DashboardShellClient initial={initial} />
     </main>
   );
 }

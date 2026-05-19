@@ -7,7 +7,6 @@ type ExportState = "idle" | "loading" | "error";
 export default function ExportButton({
   getPayload,
 }: {
-  /** Called when the user clicks — should return the current dashboard data */
   getPayload: () => ExportPayload | null;
 }) {
   const [state, setState] = React.useState<ExportState>("idle");
@@ -28,17 +27,20 @@ export default function ExportButton({
     setErrorMsg("");
 
     try {
-      // Dynamic import keeps jsPDF out of the initial JS bundle
       const { exportDashboardPDF } = await import("@/lib/export/pdf");
       await exportDashboardPDF(payload);
       setState("idle");
-    } catch (err) {
-      console.error("[ExportButton] PDF generation failed:", err);
+    } catch {
       setErrorMsg("Export failed. Please try again.");
       setState("error");
       setTimeout(() => setState("idle"), 4000);
     }
   };
+
+  const colorClass =
+    state === "error"
+      ? "border-red-300 bg-red-50 text-red-700"
+      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300";
 
   return (
     <div className="relative">
@@ -46,33 +48,13 @@ export default function ExportButton({
         onClick={handleExport}
         disabled={state === "loading"}
         aria-label="Export dashboard as PDF"
-        className={`
-          inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium
-          border transition-colors
-          ${state === "error"
-            ? "border-red-300 bg-red-50 text-red-700"
-            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300"
-          }
-          disabled:opacity-60 disabled:cursor-not-allowed
-        `}
+        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${colorClass}`}
       >
         {state === "loading" ? (
           <>
-            <svg
-              className="w-4 h-4 animate-spin text-gray-500"
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <circle
-                className="opacity-25"
-                cx="12" cy="12" r="10"
-                stroke="currentColor" strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v8H4z"
-              />
+            <svg className="w-4 h-4 animate-spin text-gray-500" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
             </svg>
             Generating…
           </>

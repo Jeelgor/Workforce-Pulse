@@ -1,7 +1,6 @@
 "use client";
 import * as React from "react";
 import {
-  ResponsiveContainer,
   BarChart,
   Bar,
   XAxis,
@@ -22,6 +21,34 @@ interface TimeSinkChartProps {
   onDeptClick: (dept: string) => void;
   onTaskClick: (task: string) => void;
   loading?: boolean;
+}
+
+// ── Hook: measure container pixel size ───────────────────────────────────────
+// Replaces ResponsiveContainer entirely. We observe the wrapper div and pass
+// exact pixel dimensions to BarChart, so Recharts never sees -1x-1.
+function useSize(ref: React.RefObject<HTMLDivElement | null>): { width: number; height: number } {
+  const [size, setSize] = React.useState({ width: 0, height: 0 });
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const update = (w: number, h: number) => {
+      if (w > 0 && h > 0) setSize({ width: Math.floor(w), height: Math.floor(h) });
+    };
+
+    // Read immediately in case the element already has size
+    update(el.offsetWidth, el.offsetHeight);
+
+    const ro = new ResizeObserver((entries) => {
+      const e = entries[0];
+      if (e) update(e.contentRect.width, e.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+
+  return size;
 }
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
@@ -74,6 +101,10 @@ export default function TimeSinkChart({
 }: TimeSinkChartProps) {
   const [dimension, setDimension] = React.useState<Dimension>("task");
   const [metric, setMetric] = React.useState<"hours" | "inr">("hours");
+
+  // ── Measure container — no ResponsiveContainer needed ──────────────────
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const { width, height } = useSize(containerRef);
 
   // ── Chart data ──────────────────────────────────────────────────────────
 
@@ -160,17 +191,12 @@ export default function TimeSinkChart({
   const dataKey = metric === "hours" ? "recoverableHours" : "recoverableInr";
   const isClickable = dimension === "department" || dimension === "task";
 
-  // ── Bar click — Recharts passes (payload, index) to Bar's onClick ───────
-  // payload here is the full data object for that bar (same as chartData[index])
   const handleBarClick = React.useCallback(
     (payload: any) => {
       const name: string = payload?.name ?? "";
       if (!name) return;
-      if (dimension === "department") {
-        onDeptClick(name);
-      } else if (dimension === "task") {
-        onTaskClick(name);
-      }
+      if (dimension === "department") onDeptClick(name);
+      else if (dimension === "task") onTaskClick(name);
     },
     [dimension, onDeptClick, onTaskClick]
   );
@@ -258,15 +284,17 @@ export default function TimeSinkChart({
         </div>
       </div>
 
-      {/* Chart */}
+      {/* Chart — container div is measured; BarChart gets explicit px dimensions */}
       {chartData.length === 0 ? (
         <div className="h-52 flex items-center justify-center text-sm text-gray-400">
           No data available for this dimension.
         </div>
       ) : (
-        <div className="w-full h-52 sm:h-64">
-          <ResponsiveContainer width="100%" height="100%">
+        <div ref={containerRef} className="w-full h-52 sm:h-64">
+          {width > 0 && height > 0 && (
             <BarChart
+              width={width}
+              height={height}
               data={chartData}
               margin={{ top: 4, right: 8, left: 4, bottom: 40 }}
               style={{ cursor: isClickable ? "pointer" : "default" }}
@@ -292,7 +320,6 @@ export default function TimeSinkChart({
                 content={<ChartTooltip metric={metric} />}
                 cursor={{ fill: "rgba(99,102,241,0.06)" }}
               />
-              {/* onClick on Bar — receives the data object for that bar directly */}
               <Bar
                 dataKey={dataKey}
                 radius={[3, 3, 0, 0]}
@@ -317,7 +344,7 @@ export default function TimeSinkChart({
                 })}
               </Bar>
             </BarChart>
-          </ResponsiveContainer>
+          )}
         </div>
       )}
 

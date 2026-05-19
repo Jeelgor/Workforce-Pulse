@@ -1,4 +1,4 @@
-import DashboardShell from "@/components/dashboard/DashboardShell";
+import DashboardShellClient from "@/components/dashboard/DashboardShellClient";
 import { loadAllData } from "@/lib/data/loaders";
 import {
   recoverableHours,
@@ -63,8 +63,7 @@ export default function DashboardPage() {
 
   return (
     <main>
-      <DashboardShell initial={initial} />
+      <DashboardShellClient initial={initial} />
     </main>
   );
 }
-

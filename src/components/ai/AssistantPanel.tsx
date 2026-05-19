@@ -61,7 +61,13 @@ function TypingIndicator() {
   );
 }
 
-export default function AssistantPanel({ activeFilters }: { activeFilters?: ActiveFilters }) {
+export default function AssistantPanel({
+  activeFilters,
+  fullHeight = false,
+}: {
+  activeFilters?: ActiveFilters;
+  fullHeight?: boolean;
+}) {
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState("");
   const [loading, setLoading] = React.useState(false);
@@ -173,17 +179,24 @@ export default function AssistantPanel({ activeFilters }: { activeFilters?: Acti
   const isEmpty = messages.length === 0;
 
   return (
-    // Taller on mobile (560px), even taller on sm+ (600px)
-    <div className="rounded-lg border bg-white shadow-sm flex flex-col h-[560px] sm:h-[600px]">
+    // fullHeight = true → fill parent container (desktop panel or mobile full-screen sheet)
+    // default → fixed height for inline usage
+    <div className={`flex flex-col bg-white ${
+      fullHeight
+        ? "h-full"
+        : "rounded-lg border shadow-sm h-[560px] sm:h-[600px]"
+    }`}>
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green-500" aria-hidden />
-          <h3 className="text-sm font-semibold text-gray-900">Workforce Pulse Assistant</h3>
+      {/* Header — hidden in fullHeight mode (parent provides its own header) */}
+      {!fullHeight && (
+        <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-500" aria-hidden />
+            <h3 className="text-sm font-semibold text-gray-900">Workforce Pulse Assistant</h3>
+          </div>
+          <div className="text-xs text-gray-400 hidden sm:block">Groq · llama-3.3-70b</div>
         </div>
-        <div className="text-xs text-gray-400 hidden sm:block">Groq · llama-3.3-70b</div>
-      </div>
+      )}
 
       {/* Message area — scrolls internally, never bleeds to page */}
       <div

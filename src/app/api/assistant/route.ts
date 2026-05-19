@@ -116,7 +116,6 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     analyticsContext = buildAnalyticsContext(ctx);
   } catch (err) {
-    console.error("[assistant] analytics pipeline error:", err);
     return Response.json(
       { error: "Failed to compute analytics context" },
       { status: 500 }
@@ -167,7 +166,6 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     return Response.json(response);
   } catch (err: unknown) {
-    console.error("[assistant] Groq API error:", err);
     const message =
       err instanceof Error ? err.message : "Unknown error calling Groq API";
     return Response.json({ error: message }, { status: 502 });

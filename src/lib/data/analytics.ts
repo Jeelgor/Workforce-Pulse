@@ -726,15 +726,6 @@ export interface WeekOverWeekInsights {
 export function weekOverWeekTrends(
   logs: NormalizedActivityLog[]
 ): WeekOverWeekResult {
-  // TEMP DEBUG: log incoming normalized logs summary
-  // eslint-disable-next-line no-console
-  console.log("[analytics] weekOverWeekTrends received logs:", logs.length);
-  // print small sample (rowIndex + whether timestamp exists)
-  // eslint-disable-next-line no-console
-  console.log(
-    "[analytics] sample rows:",
-    logs.slice(0, 3).map((r) => ({ rowIndex: r.rowIndex, hasTimestamp: !!r.timestamp, tsISO: r.timestamp ? r.timestamp.toISOString() : null }))
-  );
   const repMap  = new Map<WeekKey, { total: number; rep: number; sessions: number }>();
   const taskMap = new Map<string, { rep: number; sessions: number }>();  // key: "week|task"
   const deptMap = new Map<string, { total: number; rep: number; empIds: Set<string> }>(); // key: "week|dept"
@@ -805,12 +796,6 @@ export function weekOverWeekTrends(
     taskTrends,
     departmentTrends
   );
-
-  // TEMP DEBUG: log computed workload summary
-  // eslint-disable-next-line no-console
-  console.log("[analytics] repetitiveWorkload.length:", repetitiveWorkload.length);
-  // eslint-disable-next-line no-console
-  console.log("[analytics] repetitiveWorkload sample:", repetitiveWorkload.slice(0, 3));
 
   return { repetitiveWorkload, taskTrends, departmentTrends, insights };
 }
