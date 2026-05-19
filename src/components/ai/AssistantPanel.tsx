@@ -121,6 +121,11 @@ export default function AssistantPanel({
           body: JSON.stringify({
             question: trimmed,
             filters: activeFilters ?? {},
+            // Send prior non-error turns so the LLM has conversation context.
+            // Error messages are excluded — they're UI-only noise.
+            history: messages
+              .filter((m) => !m.error)
+              .map((m) => ({ role: m.role, content: m.content })),
           }),
         });
 

@@ -30,6 +30,8 @@ import { buildSystemPrompt, buildUserPrompt } from "@/lib/ai/prompts";
 
 interface AssistantRequest {
   question: string;
+  /** Prior conversation turns — used for multi-turn follow-ups */
+  history?: { role: "user" | "assistant"; content: string }[];
   /** Optional active dashboard filters — used to scope analytics context */
   filters?: {
     department?: string;
@@ -67,6 +69,19 @@ export async function POST(req: NextRequest): Promise<Response> {
       { status: 400 }
     );
   }
+
+  // Sanitise history — cap at last 10 turns to stay within token budget,
+  // strip anything that isn't a plain user/assistant string pair.
+  const history: { role: "user" | "assistant"; content: string }[] = (
+    Array.isArray(body.history) ? body.history : []
+  )
+    .filter(
+      (m) =>
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim().length > 0
+    )
+    .slice(-10); // last 10 turns = 5 exchanges
 
   // ── 2. Run analytics pipeline ─────────────────────────────────────────────
   // All computation happens server-side. Raw CSV/JSON never leaves the server.
@@ -123,17 +138,21 @@ export async function POST(req: NextRequest): Promise<Response> {
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
+        // System prompt with full analytics context — always first
         {
           role: "system",
           content: buildSystemPrompt(analyticsContext),
         },
+        // Prior conversation turns (multi-turn support)
+        ...history,
+        // Current user question
         {
           role: "user",
           content: buildUserPrompt(question),
         },
       ],
-      temperature: 0.2,   // low temperature = factual, grounded answers
-      max_tokens: 512,    // concise — this is a dashboard assistant
+      temperature: 0.2,
+      max_tokens: 512,
       top_p: 0.9,
     });
 
