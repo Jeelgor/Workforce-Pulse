@@ -81,7 +81,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         typeof m.content === "string" &&
         m.content.trim().length > 0
     )
-    .slice(-10); // last 10 turns = 5 exchanges
+    .slice(-20); // last 10 turns = 5 exchanges
 
   // ── 2. Run analytics pipeline ─────────────────────────────────────────────
   // All computation happens server-side. Raw CSV/JSON never leaves the server.
