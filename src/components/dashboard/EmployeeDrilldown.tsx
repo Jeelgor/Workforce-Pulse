@@ -19,7 +19,13 @@ export interface EmployeeBenchmark {
   };
 }
 
-export default function EmployeeDrilldown({ benchmarks }: { benchmarks: EmployeeBenchmark[] }) {
+export default function EmployeeDrilldown({
+  benchmarks,
+  taskFilter,
+}: {
+  benchmarks: EmployeeBenchmark[];
+  taskFilter?: string | null;
+}) {
   const [query, setQuery] = React.useState("");
   const [selectedId, setSelectedId] = React.useState<string>(benchmarks[0]?.employeeId ?? "");
 
@@ -48,7 +54,14 @@ export default function EmployeeDrilldown({ benchmarks }: { benchmarks: Employee
     return (
       <section className="rounded-xl border bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold">Employee Drilldown</h2>
-        <p className="text-sm text-muted-foreground mt-2">No employee benchmark data is available for this filter selection.</p>
+        {taskFilter && (
+          <p className="text-xs text-purple-600 mt-1">Filtered by task: <strong>{taskFilter}</strong></p>
+        )}
+        <p className="text-sm text-muted-foreground mt-2">
+          {taskFilter
+            ? `No employees found with "${taskFilter}" in their top repetitive tasks.`
+            : "No employee benchmark data is available for this filter selection."}
+        </p>
       </section>
     );
   }
@@ -58,7 +71,13 @@ export default function EmployeeDrilldown({ benchmarks }: { benchmarks: Employee
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Employee Drilldown</h2>
-          <p className="text-sm text-muted-foreground mt-1">Search an employee and compare repetitive workload to peers in the same role.</p>
+          {taskFilter ? (
+            <p className="text-xs text-purple-600 mt-1">
+              Showing {benchmarks.length} employee{benchmarks.length !== 1 ? "s" : ""} with <strong>{taskFilter}</strong> in top repetitive tasks
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground mt-1">Search an employee and compare repetitive workload to peers in the same role.</p>
+          )}
         </div>
 
         <div className="w-full max-w-xl sm:w-80">

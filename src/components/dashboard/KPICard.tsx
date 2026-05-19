@@ -27,6 +27,7 @@ export default function KPICard({
   meta,
   icon,
   loading = false,
+  methodologySlot,
 }: {
   title: string;
   value: React.ReactNode;
@@ -34,6 +35,7 @@ export default function KPICard({
   meta?: string[];
   icon?: "clock" | "currency" | null;
   loading?: boolean;
+  methodologySlot?: React.ReactNode;
 }) {
   let formatted: React.ReactNode = value;
   if (typeof value === "number") {
@@ -51,7 +53,10 @@ export default function KPICard({
   return (
     <div className="rounded-lg border bg-white shadow-sm p-5">
       <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="text-sm font-medium text-gray-500">{title}</div>
+        <div className="flex items-center gap-1 text-sm font-medium text-gray-500">
+          {title}
+          {methodologySlot}
+        </div>
         {showIcon}
       </div>
 

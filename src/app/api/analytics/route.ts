@@ -42,6 +42,29 @@ export async function POST(req: NextRequest) {
     const weekTrends = weekOverWeekTrends(filteredNormalized);
     const anomalies = detectAnomalies(filteredEnriched);
 
+    // ── Per-app breakdown (hours only — app not linked to compensation) ──────
+    const appMap = new Map<string, { repetitiveMinutes: number; recoverableMinutes: number; sessions: number }>();
+    for (const row of filteredNormalized) {
+      if (row.durationMinutes === null || row.durationMinutes <= 0) continue;
+      if (row.durationStatus === "invalid" || row.durationStatus === "flagged_zero") continue;
+      if (!row.isRepetitive) continue;
+      const feasibility = 0.7; // conservative default for app-level
+      const entry = appMap.get(row.appName) ?? { repetitiveMinutes: 0, recoverableMinutes: 0, sessions: 0 };
+      entry.repetitiveMinutes += row.durationMinutes;
+      entry.recoverableMinutes += row.durationMinutes * feasibility;
+      entry.sessions += 1;
+      appMap.set(row.appName, entry);
+    }
+    const byApp = [...appMap.entries()]
+      .map(([appName, v]) => ({
+        appName,
+        repetitiveMinutes: Math.round(v.repetitiveMinutes * 100) / 100,
+        recoverableMinutes: Math.round(v.recoverableMinutes * 100) / 100,
+        recoverableHours: Math.round((v.recoverableMinutes / 60) * 100) / 100,
+        sessions: v.sessions,
+      }))
+      .sort((a, b) => b.recoverableMinutes - a.recoverableMinutes);
+
     // Departments list for front-end selector
     const departments = Array.from(new Set(logReport.normalized.map((r: any) => r.department))).sort();
 
@@ -55,6 +78,7 @@ export async function POST(req: NextRequest) {
       weekOverWeek: weekTrends,
       anomalies,
       qualityReport,
+      byApp,
     });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
