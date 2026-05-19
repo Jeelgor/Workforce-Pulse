@@ -101,4 +101,4 @@ npm run dev   # http://localhost:3000
 
 ## Deployment
 
-Live URL: https://workforce-pulse-sage.vercel.app/
+Live URL: https://workforce-pulse-sage.vercel.app
