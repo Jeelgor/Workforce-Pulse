@@ -14,33 +14,74 @@ import type { ExportPayload } from "@/lib/export/pdf";
 // ── INR methodology tooltip ───────────────────────────────────────────────────
 function InrMethodologyTooltip() {
   const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  // Close when clicking outside
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
   return (
-    <div className="relative inline-block">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Show INR methodology"
-        className="ml-1 text-gray-400 hover:text-blue-600 transition-colors"
-      >
-        <svg className="w-3.5 h-3.5 inline" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-        </svg>
-      </button>
+    <>
+      {/* Backdrop on mobile so tapping outside closes it */}
       {open && (
-        <div className="absolute right-0 top-6 z-50 w-72 rounded-lg border bg-white shadow-lg p-3 text-xs text-gray-700 space-y-1.5">
-          <div className="font-semibold text-gray-900 mb-1">INR Methodology</div>
-          <p><strong>Formula per row:</strong></p>
-          <p className="font-mono bg-gray-50 rounded p-1.5 text-[11px] leading-relaxed">
-            recoverableMin = duration × automationFeasibility<br />
-            recoverableHrs = recoverableMin ÷ 60<br />
-            recoverableINR = recoverableHrs × hourlyCostINR
-          </p>
-          <p><strong>Automation feasibility</strong> is a per-task multiplier (0–1). Data Entry = 1.0, CRM Updates = 0.9, Email Triage = 0.8, Meetings = 0.2.</p>
-          <p><strong>Hourly cost</strong> from HRMS: annual CTC ÷ 12 ÷ 160 hrs, or LPA × 100,000 ÷ 12 ÷ 160, or direct hourly rate.</p>
-          <p className="text-gray-500">Only isRepetitive = true rows with valid duration included. Rows without compensation data excluded and counted separately.</p>
-          <button onClick={() => setOpen(false)} className="mt-1 text-blue-600 hover:underline">Close</button>
-        </div>
+        <div
+          className="fixed inset-0 z-40 sm:hidden"
+          onClick={() => setOpen(false)}
+          aria-hidden
+        />
       )}
-    </div>
+
+      <div ref={ref} className="relative inline-block">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Show INR methodology"
+          aria-expanded={open}
+          className="ml-1 text-gray-400 hover:text-blue-600 transition-colors"
+        >
+          <svg className="w-3.5 h-3.5 inline" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+          </svg>
+        </button>
+
+        {open && (
+          <div
+            className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-50 sm:absolute sm:inset-x-auto sm:translate-y-0 sm:right-0 sm:top-7 sm:w-72 rounded-lg border bg-white shadow-xl p-4 text-xs text-gray-700 space-y-2"
+            role="dialog"
+            aria-label="INR Methodology"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <div className="font-semibold text-gray-900">INR Methodology</div>
+              <button
+                onClick={() => setOpen(false)}
+                aria-label="Close"
+                className="text-gray-400 hover:text-gray-600 transition-colors p-0.5"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+            <p><strong>Formula per row:</strong></p>
+            <p className="font-mono bg-gray-50 rounded p-2 text-[11px] leading-relaxed">
+              recoverableMin = duration × automationFeasibility<br />
+              recoverableHrs = recoverableMin ÷ 60<br />
+              recoverableINR = recoverableHrs × hourlyCostINR
+            </p>
+            <p><strong>Automation feasibility</strong> is a per-task multiplier (0–1). Data Entry = 1.0, CRM Updates = 0.9, Email Triage = 0.8, Meetings = 0.2.</p>
+            <p><strong>Hourly cost</strong> from HRMS: annual CTC ÷ 12 ÷ 160 hrs, or LPA × 100,000 ÷ 12 ÷ 160, or direct hourly rate.</p>
+            <p className="text-gray-500">Only isRepetitive = true rows with valid duration included. Rows without compensation data excluded and counted separately.</p>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
